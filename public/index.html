@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>博物馆展签排版工具</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="panel">
+    <h1 class="brand">展签排版 <span>Label Typesetter</span></h1>
+
+    <label class="field">
+      <span class="field-label">标题</span>
+      <input id="title" type="text" value="白陶刻纹尊" placeholder="如：白陶刻纹尊">
+    </label>
+
+    <label class="field">
+      <span class="field-label">说明文字（中文可夹 English）</span>
+      <textarea id="body" rows="8" placeholder="输入展签正文，回车可分段。英文单词不会被拆开。"></textarea>
+    </label>
+
+    <label class="field">
+      <span class="field-label">修订稿（可选，不超过 300 字；填写后与原稿逐字对照）</span>
+      <textarea id="bodyRev" rows="5" placeholder="输入修订后的中文正文。填写后自动求最短增删对照，原稿与修订稿分别排版，可任选一版作为成品。"></textarea>
+      <span class="field-hint" id="revCount">0 / 300</span>
+    </label>
+
+    <label class="field">
+      <span class="field-label">英文译文 English translation（留空则单栏排版）</span>
+      <textarea id="bodyEn" rows="6" placeholder="填写后进入中英对照双栏模式：标题横跨整签，中文原文与译文左右并列。"></textarea>
+    </label>
+
+    <div class="field check-field">
+      <label class="check-line">
+        <input type="checkbox" id="paraAlign">
+        <span>中英段落对齐（双栏时按段落一一配对，同高起始）</span>
+      </label>
+      <span class="field-hint" id="paraAlignHint">填写英文译文进入双栏后可用</span>
+    </div>
+
+    <label class="field">
+      <span class="field-label">双语术语对照表（可选，每行「中文术语=英文译名」，空行忽略）</span>
+      <textarea id="glossary" rows="4" placeholder="如：&#10;仰韶文化=Yangshao culture&#10;仰韶村=Yangshao Village&#10;重复中文项、空值或格式错误会逐行提示。"></textarea>
+      <span class="field-hint multiline" id="glossaryHint">未录入术语对照</span>
+    </label>
+
+    <section id="termCheck" class="term-check" hidden>
+      <h2 class="compare-title">双语术语核对 <span class="compare-sub">逐段比较同一术语在中英两侧的出现次数</span></h2>
+      <div id="termSummary" class="term-summary"></div>
+      <table class="fit-table term-table" id="termTable" hidden>
+        <thead>
+          <tr><th>段号</th><th>中文术语</th><th>英文译名</th><th>中文次数</th><th>英文次数</th></tr>
+        </thead>
+        <tbody id="termBody"></tbody>
+      </table>
+    </section>
+
+    <label class="field">
+      <span class="field-label">展品介绍链接（可选，https:// 开头，UTF-8 ≤ 100 字节）</span>
+      <input id="qrLink" type="text" placeholder="如：https://example.com/item/123 ；填写后展签底部生成二维码">
+      <span class="field-hint" id="qrHint">未填写链接，不生成二维码</span>
+    </label>
+
+    <label class="field">
+      <span class="field-label">中文专名保护表（每行一个词，最多 20 个，每个 1～12 字）</span>
+      <textarea id="protect" rows="4" placeholder="每行一个不可断开的中文专名，如：&#10;仰韶村&#10;黄河中游&#10;空行忽略、重复词自动去重；词内不得含空格。"></textarea>
+      <span class="field-hint" id="protectHint">未设置保护词</span>
+    </label>
+
+    <div class="field-row">
+      <label class="field">
+        <span class="field-label">标签宽 (mm)</span>
+        <input id="widthMm" type="number" min="30" max="999" step="1" value="120">
+      </label>
+      <label class="field">
+        <span class="field-label">标签高 (mm)</span>
+        <input id="heightMm" type="number" min="20" max="999" step="1" value="80">
+      </label>
+    </div>
+
+    <section class="stock-pick">
+      <h2 class="stock-pick-title">库存规格选型 <span class="compare-sub">从现有展签规格中挑选能容纳当前成品的尺寸</span></h2>
+      <label class="field">
+        <span class="field-label">现有展签规格（每行「宽×高」毫米：宽 30～999、高 20～999，最多 12 种）</span>
+        <textarea id="stockSizes" rows="5" placeholder="如：&#10;120×80&#10;100×60&#10;90×50&#10;空行忽略、重复规格自动去重；非法行指出行号且不参与推荐。"></textarea>
+        <span class="field-hint" id="stockHint">未录入库存规格</span>
+      </label>
+      <div class="actions">
+        <button id="stockPickBtn" type="button">选型：推荐可容纳的库存规格</button>
+      </div>
+      <div id="stockResult" class="stock-result" hidden></div>
+    </section>
+
+    <section class="batch-proof">
+      <h2 class="batch-proof-title">批量校样 <span class="compare-sub">粘贴 CSV 逐条试排，不改变当前成品</span></h2>
+      <label class="field">
+        <span class="field-label">CSV 内容（首行表头 title,zh,en；最多 20 条；title、zh 必填，en 可空）</span>
+        <textarea id="batchCsv" rows="6" placeholder="title,zh,en&#10;白陶刻纹尊,&quot;新石器时代·仰韶文化，约公元前 5000–前 3000 年。&quot;,Painted pottery zun&#10;……字段含逗号、换行或双引号时用英文双引号整体包裹，字段内的双引号写两个。"></textarea>
+        <span class="field-hint multiline" id="batchHint">未粘贴 CSV</span>
+      </label>
+      <div class="actions">
+        <button id="batchRunBtn" type="button">开始校样（沿用当前尺寸与设置，不改变当前成品）</button>
+      </div>
+      <div id="batchResult" class="batch-result" hidden></div>
+    </section>
+
+    <section class="batch-sheet-ctrl">
+      <h2 class="batch-sheet-ctrl-title">异款批量拼版打印 <span class="compare-sub">校样通过的不同记录按原顺序拼满 A4</span></h2>
+      <p class="batch-sheet-note">沿用上方「批量校样」的 CSV 入口：点击「开始校样」后，通过校验的记录各自独立生成展签，
+        按当前展签尺寸与「同款拼版」区的纸张方向逐页拼入 A4（每边留白 10mm、展签间隔 4mm、不缩放）；
+        失败记录在校样结果中列出原因，不进入拼版。</p>
+      <div class="actions">
+        <button id="batchSheetPrintBtn" type="button" disabled>异款拼版打印 / 导出 PDF</button>
+      </div>
+      <span class="sheet-hint" id="batchSheetHint"></span>
+    </section>
+
+    <section class="acc-recon">
+      <h2 class="acc-recon-title">馆藏号对账 <span class="compare-sub">CSV 的 accession 列与馆藏登记清单核对，只读不改排版</span></h2>
+      <p class="acc-recon-note">沿用上方「批量校样」的 CSV：表头须含 <b>accession</b> 列且各记录非空；
+        号码格式为「年份.批次.三位流水号」（如 2024.03.001），同前缀闭区间写作 2024.03.001-005（展开保留三位宽度）。</p>
+      <label class="field">
+        <span class="field-label">馆藏登记清单（每行一项：号码或同前缀区间，空行忽略）</span>
+        <textarea id="accRegistry" rows="5" placeholder="如：&#10;2024.03.001&#10;2024.03.003-005&#10;2024.04.012&#10;每行一个号码或同前缀区间；空行忽略。"></textarea>
+        <span class="field-hint multiline" id="accHint">未粘贴登记清单</span>
+      </label>
+      <div class="actions">
+        <button id="accRunBtn" type="button">开始对账（只读，不改变校样、拼版与打印）</button>
+      </div>
+      <div id="accResult" class="acc-result" hidden></div>
+    </section>
+
+    <section id="compare" class="compare" hidden>
+      <h2 class="compare-title">修订对照 <span class="compare-sub">差异标记仅用于对照，不进入打印</span></h2>
+      <div id="diffView" class="diff-view"></div>
+      <div id="diffStats" class="diff-stats"></div>
+      <table class="fit-table">
+        <thead>
+          <tr><th>版本</th><th>正文字号</th><th>中文行数</th><th>能否容纳</th></tr>
+        </thead>
+        <tbody id="fitBody"></tbody>
+      </table>
+      <div id="fitDelta" class="fit-delta"></div>
+      <div class="version-pick">
+        <span>成品版本：</span>
+        <label><input type="radio" name="finalVer" id="finalOrig" value="orig" checked> 原稿</label>
+        <label><input type="radio" name="finalVer" id="finalRev" value="rev"> 修订稿</label>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="printBtn" type="button">打印 / 导出 PDF</button>
+    </div>
+
+    <div id="status" class="status" aria-live="polite"></div>
+
+    <section class="sheet-ctrl">
+      <h2 class="sheet-ctrl-title">同款拼版打印 <span class="compare-sub">同一成品按原尺寸拼满 A4</span></h2>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">份数（1～100）</span>
+          <input id="copies" type="number" min="1" max="100" step="1" value="1">
+        </label>
+        <div class="field">
+          <span class="field-label">A4 纸张方向</span>
+          <div class="version-pick">
+            <label><input type="radio" name="sheetOrient" id="orientPortrait" value="portrait" checked> 纵向</label>
+            <label><input type="radio" name="sheetOrient" id="orientLandscape" value="landscape"> 横向</label>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="sheetPrintBtn" type="button">拼版打印 / 导出 PDF</button>
+      </div>
+      <span class="sheet-hint" id="sheetHint"></span>
+    </section>
+
+    <details class="help">
+      <summary>排版规则说明</summary>
+      <ul>
+        <li>按字体<strong>实际字宽</strong>逐字/逐词测量后规划断行。</li>
+        <li>英文单词整体移动，不会从中间断开。</li>
+        <li><strong>中文专名保护表</strong>：每行一个词（最多 20 个、每个 1～12 个 Unicode 字符，
+          空行忽略、重复去重、含空格等换行以外空白的行会报错）；标题与中文正文每段从左到右识别，
+          同一位置最长词优先、同长按录入顺序，命中词<strong>内部不可断行</strong>，
+          词边界仍遵守标点避头尾规则；原稿与修订稿共用同一张表；
+          保护词在 12px 仍超出行宽时显示该词与所需宽度并禁用打印，不拆词、不截断。</li>
+        <li>闭标点（。，、！？：；）”’】》…—等）不会出现在行首；开标点（“‘【《〈等）不会留在行尾。</li>
+        <li>在所有放得下的排法中，最小化<strong>非末行空白宽度的平方和</strong>，使各行尽量均匀填满。</li>
+        <li>正文字号在 <strong>12–24px</strong> 中取能同时容纳宽与高的<strong>最大整数</strong>；任何字号都放不下时报错，不做截断或缩放。</li>
+        <li>标题字号为正文的 1.4 倍并加粗，宽度不足时按相同规则折行。</li>
+        <li><strong>中英对照双栏</strong>：填写英文译文后，标题横跨整签，中文原文与译文在正文区左右并列（栏间距 6mm），
+          两栏按各自实际栏宽独立断行，取<strong>两栏都能容纳的最大共享字号</strong>，高度按较高一栏与标题共同核算；
+          译文留空则保持现有单栏。</li>
+        <li><strong>中英段落对齐</strong>（双栏时可选）：开启后中英正文按换行拆成非空段落并按顺序一一配对，
+          每对仍按各自栏宽与保护词、标点规则独立断行，但下一对在两栏<strong>同一高度</strong>起始，
+          段对高度取双方较高者；字号按全部段对高度总和连同标题与二维码预留区核算，12px 仍超高时报错禁印。
+          两侧<strong>段数不一致</strong>时会指出各自段数并禁用打印；原稿与修订稿分别按各自段数核算，
+          切换成品后预览与打印使用所选版的同一份布局；关闭开关即恢复两栏各自独立排版。</li>
+        <li><strong>展品介绍二维码</strong>：填写 https:// 开头的链接（UTF-8 ≤ 100 字节、不含空白字符）后，
+          浏览器本地生成二维码（不依赖外部服务）：展签底部固定留出 22mm 区域，18mm 码图居中、四周留白 ≥2mm；
+          排版先扣除该区域再为标题与正文选最大字号；链接非法或无法编码时报错并禁用打印，留空即恢复原版式。</li>
+        <li><strong>修订对照</strong>：填写修订稿（≤300 字）后，按 Unicode 字符求最短增删对齐，
+          同代价时固定优先保留原文较早字符；对照区中绿色为新增、红色删除线为已删。</li>
+        <li><strong>双语术语核对</strong>：对照表每行「中文术语=英文译名」（空行忽略；
+          重复中文项、空值或格式错误逐行提示并禁用打印）。开启「中英段落对齐」且中英段数一致后，
+          对当前选定成品（原稿或修订稿）逐段核对：中文术语按最长优先匹配、命中区间不重复计数，
+          英文译名忽略大小写并按完整词组边界计数；任一术语在某段两侧次数不符时，
+          列出段号、术语及两侧次数，并禁用单张与拼版打印，修正后自动恢复。</li>
+        <li>原稿与修订稿沿用当前尺寸与英文译文<strong>分别排版</strong>，对照表展示两版字号、中文行数与能否容纳的变化；
+          选定成品版本后，预览与打印只显示该版，差异标记不进入打印；所选版排不下时禁用打印并说明超宽或超高。</li>
+        <li>打印输出与预览<strong>同换行、同物理尺寸</strong>（毫米）。</li>
+        <li><strong>打印门禁</strong>：点击三个打印按钮或按 Ctrl/Cmd+P 时，会先立即结算
+          120ms 防抖渲染窗口内尚未应用的标题、正文与排版设置修改，再依据当前输入重新判定；
+          排版超宽/超高、二维码或双语术语校验未通过时不打开打印、不输出单张或任何拼版内容，
+          修正输入后直接打印即恢复，无需等待或重新点击。</li>
+        <li><strong>同款拼版打印</strong>：设置份数（1～100）与 A4 纵向/横向后，仅当所选成品通过排版校验，
+          才把同一成品按原毫米尺寸复制到纸内（不缩放）：纸张每边留白 10mm、展签间隔 4mm，
+          按行列容量从左到右、从上到下逐页填充；右侧「同款拼版预览」分页展示每页每张位置，
+          「拼版打印」只输出拼版页（不含编辑面板与单张预览）；任一方向连一张都放不下时，
+          提示展签尺寸与纸内可用尺寸并禁用拼版打印；各份换行与二维码码图与单张预览完全一致。</li>
+        <li><strong>库存规格选型</strong>：逐行录入现有展签规格「宽×高」（毫米，宽 30～999、高 20～999，最多 12 种）；
+          空行忽略、重复规格自动去重，非法行指出行号且不参与推荐。点击「选型」后，
+          以当前选定的成品版本（原稿或修订稿）与中英、段落对齐、专名保护、二维码设置，
+          对每种规格按现有排版规则求最大可用字号；能完整容纳的规格按面积从小到大
+          （同面积按录入顺序）列在前面并给出可用字号，其余规格注明失败原因；
+          没有可用规格时明确提示且不改当前尺寸。点击某行的「采用」才把该规格回填
+          宽/高并刷新预览、单张与拼版打印。</li>
+        <li><strong>批量校样</strong>：粘贴含表头 title,zh,en 的 CSV（最多 20 条；
+          字段可用英文双引号包裹以包含逗号、换行，字段内双引号写两个），逐条校验列数
+          与必填的标题、中文正文（错误定位到记录号）；每条仅替换标题、中文正文与英文译文，
+          沿用当前尺寸、段落对齐、专名保护、二维码与术语表设置逐条试排，
+          列出可用字号或失败原因；校样不改变当前成品，点击通过记录的「载入编辑」
+          才回填三栏并清空修订稿。</li>
+        <li><strong>异款批量拼版打印</strong>：沿用「批量校样」的 CSV 入口，点击「开始校样」后，
+          通过校验的不同记录按原顺序各自调用现有排版与打印门禁独立生成展签
+          （中英、段落对齐、专名保护、术语核对与二维码均沿用当前设置，各展签保留自己的换行与码图），
+          失败记录在校样结果中列出原因且不进入拼版；通过记录按当前展签毫米尺寸与
+          「同款拼版」区的纸张方向逐页拼入 A4（每边留白 10mm、展签间隔 4mm、不缩放），
+          右侧「异款批量拼版预览」分页展示每页每张位置，与打印输出逐格对应；
+          单页连一张都放不下时提示展签尺寸与纸内可用尺寸并禁用异款拼版打印；
+          修改尺寸、段落对齐、专名、术语、二维码或 CSV 后拼版失效，需重新点击「开始校样」。</li>
+        <li><strong>馆藏号对账</strong>：沿用「批量校样」的 CSV（表头须含 accession 列，各记录非空），
+          与另行粘贴的馆藏登记清单（每行一项）核对；号码为「年份.批次.三位流水号」（如 2024.03.001），
+          同前缀闭区间写作 2024.03.001-005（展开保留三位宽度）；格式错误、区间倒序或任一侧展开
+          超过 200 个号码会被拒绝并指出来源行；按展开后的完整号码列出两侧各自的重号（含号段交叠）、
+          仅在 CSV 与仅在清单中的号码及来源行，顺序不同不算差异；对账只读，不改变校样、拼版与打印，
+          CSV 或清单任一变化即清空旧结果。</li>
+      </ul>
+    </details>
+  </aside>
+
+  <main class="stage-wrap">
+    <div id="stage" class="stage">
+      <!-- 成品内容由共用构建流程按排版结果生成（标题、单/双栏或段落对齐正文、二维码）；
+           错误占位常驻，仅排版失败时显示，任何打印模式都不输出 -->
+      <div id="label" class="label">
+        <div id="labelError" class="label-error" hidden></div>
+      </div>
+    </div>
+
+    <section id="sheetArea" class="sheet-area">
+      <div class="sheet-area-head">
+        <h2 class="sheet-area-title">同款拼版预览</h2>
+        <span class="sheet-area-sub" id="sheetAreaSub">A4 纸每边留白 10mm、展签间隔 4mm，按原尺寸逐页填充</span>
+      </div>
+      <div id="sheets" class="sheets"></div>
+      <div id="sheetEmpty" class="sheet-empty" hidden></div>
+    </section>
+
+    <section id="batchSheetArea" class="batch-sheet-area">
+      <div class="sheet-area-head">
+        <h2 class="sheet-area-title">异款批量拼版预览</h2>
+        <span class="sheet-area-sub" id="batchSheetAreaSub">校样通过的不同记录按原顺序拼入 A4 页</span>
+      </div>
+      <div id="batchSheets" class="sheets"></div>
+      <div id="batchSheetEmpty" class="sheet-empty" hidden></div>
+    </section>
+  </main>
+</div>
+
+<script src="/js/diff.js"></script>
+<script src="/js/layout.js"></script>
+<script src="/js/terms.js"></script>
+<script src="/js/qrcode.js"></script>
+<script src="/js/batch.js"></script>
+<script src="/js/accession.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

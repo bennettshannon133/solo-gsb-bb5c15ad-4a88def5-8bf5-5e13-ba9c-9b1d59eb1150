@@ -1,0 +1,717 @@
+/* ========== 全局 ========== */
+:root {
+  --ink: #1f2328;
+  --muted: #6b7280;
+  --line: #d9dde3;
+  --panel-bg: #f7f8fa;
+  --accent: #8a6d3b;
+  --danger: #b3261e;
+  --label-font: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC",
+                "SimSun", "Times New Roman", serif;
+  --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+             "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: var(--ui-font);
+  color: var(--ink);
+  background: #eceef1;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  height: 100vh;
+}
+
+/* ========== 左侧控制面板 ========== */
+.panel {
+  background: var(--panel-bg);
+  border-right: 1px solid var(--line);
+  padding: 20px 18px;
+  overflow-y: auto;
+}
+
+.brand {
+  margin: 0 0 18px;
+  font-size: 20px;
+  letter-spacing: 2px;
+}
+.brand span {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.field { display: block; margin-bottom: 14px; }
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+
+.check-field { margin-bottom: 14px; }
+.check-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.check-line input { width: auto; margin: 0; }
+.check-line input:disabled + span { color: var(--muted); cursor: not-allowed; }
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+input[type="text"], input[type="number"], textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: var(--ui-font);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  resize: vertical;
+}
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(138, 109, 59, 0.15);
+}
+
+.actions { margin: 4px 0 12px; }
+button {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #fff;
+  background: var(--ink);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+button:hover { background: #000; }
+button:disabled { background: #aaa5; cursor: not-allowed; }
+
+.status {
+  min-height: 20px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin-bottom: 10px;
+  white-space: pre-line;
+}
+.status.ok { color: #2f6f44; }
+.status.err { color: var(--danger); font-weight: 600; }
+
+.help {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.help summary { cursor: pointer; color: var(--ink); margin-bottom: 6px; }
+.help ul { padding-left: 18px; margin: 0; }
+
+/* ========== 修订稿与修订对照 ========== */
+.field-hint {
+  display: block;
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.field-hint.over { color: var(--danger); font-weight: 600; }
+.field-hint.err { color: var(--danger); font-weight: 600; }
+/* 逐行提示可能有多条（如术语对照表逐行错误），保留换行并左对齐 */
+.field-hint.multiline {
+  white-space: pre-line;
+  text-align: left;
+}
+
+/* ========== 双语术语核对 ========== */
+.term-check {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+.term-summary {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-bottom: 6px;
+  white-space: pre-line;
+}
+.term-summary.ok { color: #2f6f44; }
+.term-summary.err { color: var(--danger); font-weight: 600; }
+.term-table { margin-bottom: 10px; }
+.term-table td.bad { color: var(--danger); font-weight: 600; }
+
+.compare {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+.compare-title {
+  font-size: 13px;
+  margin: 0 0 8px;
+  letter-spacing: 1px;
+}
+.compare-sub {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* 差异视图：新增绿色、删除红色删除线；仅屏幕对照用，打印时随面板隐藏 */
+.diff-view {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.9;
+  max-height: 200px;
+  overflow: auto;
+  word-break: break-all;
+}
+.diff-view del {
+  color: var(--danger);
+  background: rgba(179, 38, 30, 0.10);
+  text-decoration: line-through;
+  border-radius: 2px;
+}
+.diff-view ins {
+  color: #1e7b34;
+  background: rgba(30, 123, 52, 0.12);
+  text-decoration: none;
+  border-bottom: 1px solid #1e7b34;
+  border-radius: 2px;
+}
+.diff-view .nl {
+  font-style: normal;
+  font-size: 10px;
+  padding: 0 1px;
+}
+
+.diff-stats {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 8px;
+}
+
+/* 两版排版对比表、库存规格选型结果表、批量校样结果表与馆藏号对账差异表 */
+.fit-table,
+.stock-table,
+.batch-table,
+.acc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.fit-table th,
+.fit-table td,
+.stock-table th,
+.stock-table td,
+.batch-table th,
+.batch-table td,
+.acc-table th,
+.acc-table td {
+  border: 1px solid var(--line);
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+.fit-table th,
+.stock-table th,
+.batch-table th,
+.acc-table th {
+  background: #f0f1f4;
+  font-weight: 600;
+}
+.fit-table td.good,
+.stock-table td.good,
+.batch-table td.good { color: #2f6f44; }
+.fit-table td.bad,
+.stock-table td.bad,
+.batch-table td.bad { color: var(--danger); }
+
+.fit-delta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+.version-pick {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+}
+.version-pick > span { color: var(--muted); font-size: 12px; }
+.version-pick label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.version-pick input { width: auto; margin: 0; }
+
+/* ========== 库存规格选型 ========== */
+.stock-pick {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+.stock-pick-title {
+  font-size: 13px;
+  margin: 0 0 8px;
+  letter-spacing: 1px;
+}
+.stock-result {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.stock-result-head { color: var(--muted); margin: 6px 0; }
+.stock-result-errs {
+  color: var(--danger);
+  margin-bottom: 6px;
+  white-space: pre-line;
+}
+.stock-result-none {
+  color: var(--danger);
+  font-weight: 600;
+  margin-bottom: 6px;
+  white-space: pre-line;
+}
+.stock-best {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.stock-adopt {
+  width: auto;
+  padding: 3px 12px;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+/* ========== 批量校样 ========== */
+.batch-proof {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+.batch-proof-title {
+  font-size: 13px;
+  margin: 0 0 8px;
+  letter-spacing: 1px;
+}
+.batch-result {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.batch-result-head {
+  color: var(--muted);
+  margin: 6px 0;
+  white-space: pre-line;
+}
+.batch-result-errs {
+  color: var(--danger);
+  margin-bottom: 6px;
+  white-space: pre-line;
+}
+.batch-load {
+  width: auto;
+  padding: 3px 12px;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+/* ========== 异款批量拼版 ========== */
+.batch-sheet-ctrl {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+.batch-sheet-ctrl-title {
+  font-size: 13px;
+  margin: 0 0 8px;
+  letter-spacing: 1px;
+}
+.batch-sheet-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+/* ========== 馆藏号对账 ========== */
+.acc-recon {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+.acc-recon-title {
+  font-size: 13px;
+  margin: 0 0 8px;
+  letter-spacing: 1px;
+}
+.acc-recon-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.acc-result {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.acc-result-head {
+  color: var(--muted);
+  margin: 6px 0;
+  white-space: pre-line;
+}
+.acc-result-ok {
+  color: #2f6f44;
+  font-weight: 600;
+  margin: 6px 0;
+}
+.acc-result-errs {
+  color: var(--danger);
+  margin-bottom: 6px;
+  white-space: pre-line;
+}
+.acc-sub {
+  color: var(--danger);
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+/* 差异号码较多时表格内部滚动，避免撑长面板 */
+.acc-table-wrap {
+  max-height: 220px;
+  overflow: auto;
+  margin-bottom: 6px;
+}
+.acc-no {
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  white-space: nowrap;
+}
+
+/* ========== 右侧预览舞台 ========== */
+.stage-wrap { overflow: auto; }
+.stage {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+/* 展签本体：所有尺寸均为物理毫米，#label 本身即打印页 */
+.label {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--label-w);
+  height: var(--label-h);
+  padding: 8mm;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0,0,0,0.06);
+  transform-origin: center center;
+  overflow: hidden;
+  font-family: var(--label-font);
+  color: #111;
+}
+
+.label-title {
+  font-size: var(--title-size);
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: var(--title-gap);
+  /* 标点折行规则同样生效；white-space: pre 保证空格与预断行原样呈现 */
+}
+
+/* 正文区：单栏即一列；双栏（.dual）时中英左右并列，栏间距 6mm */
+.label-content,
+.label-col {
+  font-size: var(--body-size);
+  line-height: 1.6;
+}
+
+.label-content.dual {
+  display: flex;
+  align-items: flex-start;
+  gap: 6mm;
+}
+
+.label-content.dual .label-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 段落对齐模式：一个容器内按对依次放置中、英段落，
+   grid 每行两列即一对段落；两栏各自独立断行、顶部对齐，
+   行与行之间沿用现有段间距（--para-gap），自动行高取同对两者较高者。 */
+.label-content.paired[hidden] { display: none; }
+.label-content.paired {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 6mm;
+  row-gap: var(--para-gap);
+  align-items: start;
+}
+.label-content.paired .t-paragraph {
+  min-width: 0;
+  margin-top: 0;
+}
+
+.label-title .t-line,
+.label-col .t-line,
+.label-content.paired .t-line {
+  white-space: pre;
+  display: block;
+}
+
+.label-col .t-paragraph + .t-paragraph {
+  margin-top: var(--para-gap);
+}
+
+/* 底部二维码区：固定 22mm 高，18mm 码图居中，四周留白 ≥2mm */
+.label-qr {
+  position: absolute;
+  left: 8mm;
+  right: 8mm;
+  bottom: 8mm;
+  height: 22mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.label-qr[hidden] { display: none; }
+.label-qr canvas {
+  width: 18mm;
+  height: 18mm;
+  image-rendering: pixelated;
+}
+
+.label-error {
+  position: absolute;
+  inset: 8mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: var(--ui-font);
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--danger);
+  border: 2px dashed var(--danger);
+  border-radius: 4px;
+  padding: 10px;
+  background: rgba(179, 38, 30, 0.04);
+}
+
+/* ========== 同款拼版（A4 多份） ========== */
+.sheet-ctrl {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+.sheet-ctrl-title {
+  font-size: 13px;
+  margin: 0 0 8px;
+  letter-spacing: 1px;
+}
+.sheet-hint {
+  display: block;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-top: 6px;
+  white-space: pre-line;
+}
+.sheet-hint.ok { color: #2f6f44; }
+.sheet-hint.err { color: var(--danger); font-weight: 600; }
+
+/* 右侧分页拼版预览：每页一张纸，纸内按毫米定位每份展签 */
+.sheet-area {
+  border-top: 1px solid var(--line);
+  padding: 18px 24px 36px;
+}
+.sheet-area-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.sheet-area-title { font-size: 14px; margin: 0; letter-spacing: 1px; }
+.sheet-area-sub { font-size: 12px; color: var(--muted); }
+
+.sheet-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+}
+/* 屏幕上纸张被整体缩放显示，wrap 按缩放后的尺寸裁剪占位 */
+.sheet-wrap { overflow: hidden; }
+.sheet {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0,0,0,0.06);
+  transform-origin: top left;
+  overflow: hidden;
+}
+/* 拼版内的每份展签：与单张预览共用同一 DOM 与毫米尺寸；
+   屏幕上的虚线仅标示每张位置/裁切边界，打印时去掉 */
+.sheet .sheet-label {
+  position: absolute;
+  box-shadow: none;
+  border: 1px dashed #c3c8cf;
+}
+.sheet-caption {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.sheet-empty {
+  background: #fff;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+  text-align: center;
+  white-space: pre-line;
+}
+.sheet-empty.err {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(179, 38, 30, 0.04);
+}
+
+/* 异款批量拼版预览区：与同款拼版相同的纸张/分页结构，
+   每张为不同记录各自生成的展签（沿用 .sheet / .sheet-label 等样式） */
+.batch-sheet-area {
+  border-top: 1px solid var(--line);
+  padding: 18px 24px 36px;
+}
+
+/* ========== 打印：单张模式 #label 即页面；拼版模式只输出拼版页 ========== */
+@page { margin: 0; }
+
+@media print {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+  /* 隐藏一切非展签元素 */
+  .panel { display: none !important; }
+  .app-shell { display: block; height: auto; }
+  .stage-wrap { overflow: visible; }
+  .stage {
+    min-height: 0;
+    padding: 0;
+    display: block;
+  }
+  .label {
+    box-shadow: none;
+    transform: none !important;
+    margin: 0;
+  }
+  /* 单张打印：不输出拼版预览区 */
+  .sheet-area { display: none !important; }
+  .batch-sheet-area { display: none !important; }
+
+  /* 错误占位展签仅用于屏幕提示，任何打印模式都不得输出 */
+  .label-error { display: none !important; }
+
+  /* 打印门禁未通过（body.print-none）：当前输入未结算出可打印成品
+     （防抖窗口内的修改、排版/二维码/术语校验失败等），单张与两种拼版
+     内容一律不输出，避免错误占位展签或修改前成品进入打印 */
+  body.print-none .stage,
+  body.print-none .sheet-area,
+  body.print-none .batch-sheet-area { display: none !important; }
+
+  /* 拼版打印（body.print-sheet）：只输出拼版页，不输出编辑面板与单张预览 */
+  body.print-sheet .stage { display: none !important; }
+  body.print-sheet .sheet-area {
+    display: block !important;
+    border: none;
+    padding: 0;
+  }
+  body.print-sheet .sheet-area-head,
+  body.print-sheet .sheet-caption { display: none !important; }
+  body.print-sheet .sheet-block { display: block; margin: 0; }
+  body.print-sheet .sheet-wrap {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible;
+  }
+  body.print-sheet .sheet {
+    transform: none !important;
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+  }
+  body.print-sheet .sheet-block:last-child .sheet {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  body.print-sheet .sheet .sheet-label { border: none; }
+
+  /* 异款批量拼版打印（body.print-batch）：只输出异款拼版页，
+     不输出编辑面板、单张预览与同款拼版预览 */
+  body.print-batch .stage { display: none !important; }
+  body.print-batch .batch-sheet-area {
+    display: block !important;
+    border: none;
+    padding: 0;
+  }
+  body.print-batch .batch-sheet-area .sheet-area-head,
+  body.print-batch .batch-sheet-area .sheet-caption { display: none !important; }
+  body.print-batch .batch-sheet-area .sheet-block { display: block; margin: 0; }
+  body.print-batch .batch-sheet-area .sheet-wrap {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible;
+  }
+  body.print-batch .batch-sheet-area .sheet {
+    transform: none !important;
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+  }
+  body.print-batch .batch-sheet-area .sheet-block:last-child .sheet {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  body.print-batch .batch-sheet-area .sheet .sheet-label { border: none; }
+}
