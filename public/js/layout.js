@@ -10,16 +10,20 @@
  *
  * 中文专名保护（protectedWords）：
  *   每段内从左到右扫描，同一位置优先最长保护词、同长按录入顺序；
- *   已匹配字符不再参与后续匹配。命中区间在分词后被合并为单个
- *   type='protect' 的不可断行 token（词内连字符等同样不再可断），
- *   区间边界仍按上述标点避头尾规则判断。仅用于标题与中文正文。
+ *   已匹配字符不再参与后续匹配。命中区间不改变分词结果，而是与原词
+ *   （英文单词等）自身的不可断性「求并」：区间触达的相邻 token 之间
+ *   追加不可断边，整体形成不可断原子块。部分重叠（如单词 pottery 命中
+ *   ott）或跨词命中都不新增词内断点；原子块整体超宽即报失败。
+ *   标点避头尾按原子块实际首尾字符判断，区间内部括号不影响合法断点。
+ *   仅用于标题与中文正文。
  *
  * 断行算法：动态规划。在满足宽度与标点规则的所有可行排法中，
  * 最小化「非末行的空白宽度平方和」（与 TeX 段落断行同一思想），
  * 代价比相同时取行数更少、断点更靠右的方案，保证结果确定唯一。
  *
  * 超宽失败：planText 返回 { error:'width', overflows:[...] }，
- * overflows 列出每一个超出行宽的不可拆整体（英文单词或保护词）。
+ * overflows 列出每一个超出行宽的不可断原子块（英文单词，或因保护词
+ * 绑定多 token 形成的整体）。
  */
 (function (global) {
   'use strict';
@@ -100,14 +104,16 @@
 
   /**
    * 分词 → 段落数组。返回 Array<Array<Token>>，每个 token：
-   * { t: 文本, type: 'word'|'char'|'open'|'close'|'space'|'protect', ch: 码位 }
+   * { t: 文本, type: 'word'|'char'|'open'|'close'|'space', ch: 首码位 }
    * 已去除空段、合并连续空白、去掉段首尾空白。
    *
+   * 专名保护不在分词阶段改写 token：protectedWords 仅用于与 layout 层
+   * 一致的分段计数（外部按 tokenize(...).length 统计非空段落数）；
+   * 命中区间在 planParagraph 中以「不可断边」形式叠加到原 token 上。
+   *
    * @param {string} text 原文
-   * @param {string[]} [protectedWords] 中文专名保护词表（已在 UI 层校验：
-   *        去重后 ≤20 个、每个 1–12 个 Unicode 字符、无换行外空白）。
-   *        每段独立从左到右匹配，同位置最长优先、同长按录入顺序；
-   *        命中区间合并为 type='protect' 的不可断行 token。
+   * @param {string[]} [protectedWords] 中文专名保护词表（兼容签名，
+   *        分词结果不随词表变化；不可断约束见 planParagraph）。
    */
   function tokenize(text, protectedWords) {
     var paragraphs = [];
@@ -156,15 +162,12 @@
     }
     flush();
 
-    var words = normalizeProtectedWords(protectedWords);
-
-    // 去掉每段首尾空格 token，再应用专名保护
+    // 去掉每段首尾空格 token。专名保护在断行阶段以不可断边叠加，不改写分词。
     return paragraphs.map(function (tokens) {
       var a = 0, b = tokens.length;
       while (a < b && tokens[a].type === 'space') a++;
       while (b > a && tokens[b - 1].type === 'space') b--;
-      var trimmed = tokens.slice(a, b);
-      return words.length ? applyProtection(trimmed, words) : trimmed;
+      return tokens.slice(a, b);
     }).filter(function (tokens) { return tokens.length > 0; });
   }
 
@@ -226,65 +229,58 @@
     return intervals;
   }
 
-  // 单个原 token 的 [from,to) 码位切片，保持其原类型（切开后仍是词/标点的一部分）
-  function sliceToken(token, from, to) {
-    var t = Array.from(token.t).slice(from, to).join('');
-    return { t: t, type: token.type, ch: t.codePointAt(0) };
-  }
-
   /**
-   * 把命中区间覆盖到的码位合并为不可断行的 'protect' token；
-   * 与多字符 word token 部分重叠（含同一 token 内有多个不重叠区间）时，
-   * 未覆盖的前/中/后缀保留为原类型切片。按全局码位指针线性切分。
+   * 计算单段内 token 之间的「不可断边」。
+   *
+   * 两类约束取并集：
+   *   1. 原词自身不可断：英文单词等在分词阶段已是完整 token，天然不产生
+   *      词内断点（保护词部分重叠时绝不切开原词）；
+   *   2. 保护命中区间触达的相邻 token 绑定：区间覆盖到的每个 token 与
+   *      下一个被覆盖的非空格 token 之间不可断。保护词不含空白，且匹配
+   *      不跨空格 token，故一条不可断边两端必为相邻的可见 token；跨词
+   *      命中会把沿途 token 全部绑成一个原子块。
+   *
+   * 返回 { noBreak: Uint8Array(n), bound: Uint8Array(n) }：
+   *   noBreak[i] = tokens[i] 与 tokens[i+1] 之间不可断（i = 0..n-2）；
+   *   bound[i]   = tokens[i] 被某保护区间触达（含单 token 完整命中），
+   *                用于超宽报告时把该原子块标注为「保护词整体」。
    */
-  function applyProtection(tokens, words) {
-    var intervals = matchProtection(tokens, words);
-    if (!intervals.length) return tokens;
+  function buildNoBreakEdges(tokens, words) {
+    var n = tokens.length;
+    var noBreak = new Uint8Array(n);
+    var bound = new Uint8Array(n);
+    if (!words || !words.length) return { noBreak: noBreak, bound: bound };
 
-    // 全局码位偏移 → token 下标、token 内偏移；tokenEnd[i] 为 token i 的全局排他终点
+    var intervals = matchProtection(tokens, words);
+    if (!intervals.length) return { noBreak: noBreak, bound: bound };
+
+    // 全局码位偏移 → token 下标；tokenEnd[i] 为 token i 的全局排他终点
     var owner = [];
-    var inner = [];
     var tokenEnd = [];
     var acc = 0;
-    for (var i = 0; i < tokens.length; i++) {
+    for (var i = 0; i < n; i++) {
       var cps = Array.from(tokens[i].t);
-      for (var j = 0; j < cps.length; j++) {
-        owner.push(i);
-        inner.push(j);
-      }
+      for (var j = 0; j < cps.length; j++) owner.push(i);
       acc += cps.length;
       tokenEnd.push(acc);
     }
-    var total = acc;
 
-    var out = [];
-    var pos = 0;   // 当前全局码位
-    var iv = 0;    // 下一个待处理区间
-
-    while (pos < total) {
-      if (iv < intervals.length && pos === intervals[iv].start) {
-        // 保护区：横跨的 token 逐段切片后合并为一个 protect token
-        var end = intervals[iv].end;
-        var text = '';
-        while (pos < end) {
-          var ti = owner[pos];
-          var gEnd = Math.min(end, tokenEnd[ti]);
-          text += Array.from(tokens[ti].t)
-            .slice(inner[pos], inner[gEnd - 1] + 1).join('');
-          pos = gEnd;
-        }
-        out.push({ t: text, type: 'protect', ch: text.codePointAt(0), protect: true });
-        iv++;
-      } else {
-        // 非保护区：到当前 token 终点或下一区间起点为止，保留原类型
-        var nextStart = iv < intervals.length ? intervals[iv].start : total;
-        var tk = owner[pos];
-        var runEnd = Math.min(tokenEnd[tk], nextStart);
-        out.push(sliceToken(tokens[tk], inner[pos], inner[runEnd - 1] + 1));
-        pos = runEnd;
+    for (var k = 0; k < intervals.length; k++) {
+      var end = intervals[k].end;
+      // 从区间起点所属 token 起，按 token 逐个推进到区间终点。
+      // matchProtection 保证区间不跨空格 token，故触达的必为连续可见 token。
+      var first = owner[intervals[k].start];
+      var last = first;
+      var pos = intervals[k].start;
+      while (pos < end) {
+        last = owner[pos];
+        bound[last] = 1;
+        pos = tokenEnd[last];
       }
+      // [first, last] 内相邻 token 全部并入同一原子块
+      for (var e = first; e < last; e++) noBreak[e] = 1;
     }
-    return out;
+    return { noBreak: noBreak, bound: bound };
   }
 
   var DASH_CHARS = (function () {
@@ -295,17 +291,39 @@
 
   /**
    * 单段动态规划断行。
-   * @param {Token[]} tokens   已分段的 token
+   * @param {Token[]} tokens   已分段的 token（分词结果，不含 protect 改写）
    * @param {number} maxWidth  行宽（px）
    * @param {(s:string)=>number} measure 文本宽度函数（px）
    * @param {boolean} lastLineFree 末行是否不计空白代价（正文最后一段为 true）
+   * @param {string[]} [protectedWords] 中文专名保护词表：命中区间在原词
+   *        不可断性之上再叠加不可断边，共同形成不可断原子块
    * @returns {{lines:string[], widths:number[], tokens:Token[][],
    *            overflows:Array<{text:string,width:number,protect:boolean}>}}
-   *          放不下（存在超过行宽的不可拆整体，含保护词）时 overflows 非空
+   *          放不下（存在超过行宽的不可断原子块，含保护词整体）时 overflows 非空
    */
-  function planParagraph(tokens, maxWidth, measure, lastLineFree) {
+  function planParagraph(tokens, maxWidth, measure, lastLineFree, protectedWords) {
     var n = tokens.length;
     if (n === 0) return { lines: [], widths: [], tokens: [], overflows: [] };
+
+    // 不可断边：原词自身 + 保护命中区间绑定，共同构成不可断原子块
+    var words = normalizeProtectedWords(protectedWords);
+    var edges = buildNoBreakEdges(tokens, words);
+    var noBreak = edges.noBreak;
+    var bound = edges.bound;
+
+    // 每个 token 所属原子块编号：沿 noBreak 边顺序合并（块内 token 连续）
+    var blockOf = new Int32Array(n);
+    var blocks = []; // {end,width,text,protect}（块内通常不含空格；空格不计宽）
+    var bid = 0;
+    for (var bi = 0; bi < n; bi++) {
+      if (bi === 0 || !noBreak[bi - 1]) {
+        blockOf[bi] = bid++;
+        blocks.push({ end: bi + 1, width: 0, text: '', protect: false });
+      } else {
+        blockOf[bi] = blockOf[bi - 1];
+      }
+      blocks[blockOf[bi]].end = bi + 1;
+    }
 
     // 预处理：左右最近的非空格 token 下标，用于跨行标点判断
     var prevNonSpace = new Int32Array(n);
@@ -321,7 +339,7 @@
       if (tokens[j].type !== 'space') q = j;
     }
 
-    // 保护词的边界字符（码位）：区间内部不可断，边界仍按避头尾处理
+    // 原子块的实际首尾码位：标点避头尾只看块边界，内部括号不参与判断
     function firstCp(tok) {
       return Array.from(tok.t)[0].codePointAt(0);
     }
@@ -329,23 +347,43 @@
       var cs = Array.from(tok.t);
       return cs[cs.length - 1].codePointAt(0);
     }
-    function isOpenTok(tok) {
-      return tok.type === 'open' || (tok.type === 'protect' && !!OPEN_SET[firstCp(tok)]);
+    // 行尾可见 token：以其实际最后一个码位判断开标点（开标点不得在行尾）
+    function endsOpen(tok) {
+      return !!OPEN_SET[lastCp(tok)];
     }
-    function isCloseTok(tok) {
-      return tok.type === 'close' || (tok.type === 'protect' && !!CLOSE_SET[firstCp(tok)]);
+    // 行首可见 token：以其实际第一个码位判断闭标点（闭标点不得在行首）
+    function startsClose(tok) {
+      return !!CLOSE_SET[firstCp(tok)];
     }
 
-    // w[i] = token 宽度；同时收集所有超出行宽的不可拆整体（保护词/英文单词）
+    // w[i] = token 宽度
     var w = new Array(n);
-    var overflows = [];
     for (var k = 0; k < n; k++) {
       w[k] = tokens[k].type === 'space' ? measure(' ') : measure(tokens[k].t);
-      if (w[k] > maxWidth + 0.5 && tokens[k].type !== 'space') {
+    }
+
+    // 汇总每个不可断原子块的宽度/文本，收集超出行宽的整体
+    // （英文单词本身是单 token 块；保护词跨词绑定时是多 token 块）
+    for (var wi = 0; wi < n; wi++) {
+      var blk = blocks[blockOf[wi]];
+      if (tokens[wi].type !== 'space') {
+        blk.width += w[wi];
+        blk.text += tokens[wi].t;
+      }
+      if (bound[wi]) blk.protect = true;
+    }
+    var overflows = [];
+    var seenBlock = new Uint8Array(blocks.length);
+    for (var oi = 0; oi < n; oi++) {
+      var ob = blockOf[oi];
+      if (seenBlock[ob] || tokens[oi].type === 'space') continue;
+      seenBlock[ob] = 1;
+      var oblk = blocks[ob];
+      if (oblk.width > maxWidth + 0.5) {
         overflows.push({
-          text: tokens[k].t,
-          width: w[k],
-          protect: tokens[k].type === 'protect'
+          text: oblk.text,
+          width: oblk.width,
+          protect: oblk.protect
         });
       }
     }
@@ -354,13 +392,15 @@
     function canBreakBetween(a, b) {
       if (a < 0 || b >= n) return true;
       var L = tokens[a], R = tokens[b];
-      // 左侧最后一个可见 token 不能是开标点（开标点不在行尾）
-      if (isOpenTok(L)) return false;
-      // 右侧第一个可见 token 不能是闭标点（闭标点不在行首）
-      if (isCloseTok(R)) return false;
-      // 两个成对标点（破折号/省略号）不可拆为两行（取各 token 的边界字符）
-      var lch = L.type === 'protect' ? lastCp(L) : L.ch;
-      var rch = R.type === 'protect' ? firstCp(R) : R.ch;
+      // 不可断原子块内部不得有断点（原词整体 + 保护区间绑定）
+      if (blockOf[a] === blockOf[b]) return false;
+      // 左侧原子块的实际末尾字符不能是开标点（开标点不在行尾）
+      if (endsOpen(L)) return false;
+      // 右侧原子块的实际首字符不能是闭标点（闭标点不在行首）
+      if (startsClose(R)) return false;
+      // 两个成对标点（破折号/省略号）不可拆为两行（取两侧块边界字符）
+      var lch = lastCp(L);
+      var rch = firstCp(R);
       if (DASH_CHARS[lch] && DASH_CHARS[rch]) return false;
       if (lch === 0x2026 && rch === 0x2026) return false;
       return true;
@@ -478,7 +518,9 @@
     var seenOverflow = Object.create(null);
     var failed = false;
     for (var i = 0; i < paras.length; i++) {
-      var r = planParagraph(paras[i], maxWidth, measure, i === paras.length - 1);
+      var r = planParagraph(
+        paras[i], maxWidth, measure, i === paras.length - 1, protectedWords
+      );
       if (r.overflows.length || r.infeasible) {
         failed = true;
         r.overflows.forEach(function (o) {
